@@ -1,6 +1,8 @@
 # SaludPública Sanare
 
-Sistema de Gestión de Turnos para Centros de Salud Públicos.
+Sistema completo de gestión de turnos médicos con IA para centros de salud públicos.
+
+**Stack:** NestJS + React + TypeScript + PostgreSQL + Redis + Gemini AI
 
 ## 🏥 Descripción del Proyecto
 
