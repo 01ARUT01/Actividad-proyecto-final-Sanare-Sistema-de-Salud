@@ -1,37 +1,58 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Calendar, Activity, TrendingUp, UserCog, CalendarCheck } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Users, Calendar, Activity, TrendingUp, UserCog, CalendarCheck, LogOut } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import DoctorManagement from './DoctorManagement';
 import AppointmentsCalendar from './AppointmentsCalendar';
+import UserManagement from './UserManagement';
+import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
+import { weekdays } from '../utils/format';
+import { API_URL } from '../services/apiConfig';
 
-type TabType = 'overview' | 'doctors' | 'calendar';
+type TabType = 'overview' | 'doctors' | 'calendar' | 'users';
+
+interface AdminAppointment {
+  date: string;
+  status: string;
+  doctor: {
+    name: string;
+    specialty: { name: string };
+  } | null;
+}
 
 const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const { logout } = useAuth();
+  const { t, locale } = useI18n();
   const [stats, setStats] = useState({
     total: 0,
     confirmed: 0,
     pending: 0,
     cancelled: 0,
   });
+  const [appointments, setAppointments] = useState<AdminAppointment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadStats = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3001/appointments/stats', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const headers = { Authorization: `Bearer ${token}` };
 
-      if (response.ok) {
-        const data = await response.json();
-        setStats(data);
+      const [statsRes, appointmentsRes] = await Promise.all([
+        fetch(`${API_URL}/appointments/stats`, { headers }),
+        fetch(`${API_URL}/appointments`, { headers }),
+      ]);
+
+      if (statsRes.ok) {
+        setStats(await statsRes.json());
+      }
+      if (appointmentsRes.ok) {
+        setAppointments(await appointmentsRes.json());
       }
     } catch (error) {
       console.error('Error loading stats:', error);
@@ -40,56 +61,89 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  // Mock data para gráficos (en producción vendrían del backend)
-  const appointmentsBySpecialty = [
-    { specialty: 'General', count: 25 },
-    { specialty: 'Cardiología', count: 18 },
-    { specialty: 'Pediatría', count: 32 },
-    { specialty: 'Dermatología', count: 15 },
-    { specialty: 'Traumatología', count: 12 },
-  ];
+  const appointmentsBySpecialty = useMemo(() => {
+    const counts = new Map<string, number>();
+    appointments.forEach((appt) => {
+      const name = appt.doctor?.specialty?.name ?? t('admin.chart.unknown');
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+    return Array.from(counts.entries())
+      .map(([specialty, count]) => ({ specialty, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [appointments, t]);
 
-  const appointmentsByDay = [
-    { day: 'Lun', count: 45 },
-    { day: 'Mar', count: 52 },
-    { day: 'Mié', count: 48 },
-    { day: 'Jue', count: 61 },
-    { day: 'Vie', count: 55 },
-    { day: 'Sáb', count: 28 },
-    { day: 'Dom', count: 15 },
-  ];
+  const appointmentsByDay = useMemo(() => {
+    const days = weekdays(locale, 'short');
+    const counts = new Array(7).fill(0);
+    appointments.forEach((appt) => {
+      counts[new Date(appt.date).getDay()] += 1;
+    });
+    return days.map((day, i) => ({ day, count: counts[i] }));
+  }, [appointments, locale]);
 
   const tabs = [
+    { id: 'overview' as TabType, label: t('admin.tab.overview'), icon: TrendingUp },
+    { id: 'doctors' as TabType, label: t('admin.tab.doctors'), icon: UserCog },
+    { id: 'calendar' as TabType, label: t('admin.tab.calendar'), icon: CalendarCheck },
+    { id: 'users' as TabType, label: t('admin.tab.users'), icon: Users },
+  ];
+
+  const statsCards = [
+    { label: t('admin.stat.total'), value: stats.total, color: 'text-gray-800', icon: Calendar, iconColor: 'text-blue-600 opacity-20' },
+    { label: t('admin.stat.confirmed'), value: stats.confirmed, color: 'text-green-600', icon: Activity, iconColor: 'text-green-600 opacity-20' },
+    { label: t('admin.stat.pending'), value: stats.pending, color: 'text-yellow-600', icon: Calendar, iconColor: 'text-yellow-600 opacity-20' },
+    { label: t('admin.stat.cancelled'), value: stats.cancelled, color: 'text-red-600', icon: Calendar, iconColor: 'text-red-600 opacity-20' },
+  ];
+
+  const quickActions = [
     {
-      id: 'overview' as TabType,
-      label: 'Resumen',
-      icon: TrendingUp,
-    },
-    {
-      id: 'doctors' as TabType,
-      label: 'Gestión de Doctores',
+      onClick: () => setActiveTab('doctors'),
+      bg: 'bg-blue-50 hover:bg-blue-100',
       icon: UserCog,
+      iconColor: 'text-blue-600',
+      title: t('admin.quick.doctors'),
+      text: t('admin.quick.doctorsText'),
     },
     {
-      id: 'calendar' as TabType,
-      label: 'Calendario',
+      onClick: () => setActiveTab('calendar'),
+      bg: 'bg-purple-50 hover:bg-purple-100',
       icon: CalendarCheck,
+      iconColor: 'text-purple-600',
+      title: t('admin.quick.calendar'),
+      text: t('admin.quick.calendarText'),
+    },
+    {
+      onClick: () => setActiveTab('overview'),
+      bg: 'bg-green-50 hover:bg-green-100',
+      icon: Activity,
+      iconColor: 'text-green-600',
+      title: t('admin.quick.reports'),
+      text: t('admin.quick.reportsText'),
     },
   ];
 
   return (
-    <div className="py-8 space-y-6">
+    <div className="py-8 space-y-6 animate-fade-up">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex items-center space-x-3">
           <Users className="w-8 h-8 text-blue-600" />
-          <h2 className="text-3xl font-bold text-gray-800">Panel de Administración</h2>
+          <h2 className="text-3xl font-bold text-gray-800">{t('admin.title')}</h2>
         </div>
+
+        <button
+          onClick={logout}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition-colors"
+          title={t('nav.logoutFull')}
+        >
+          <LogOut className="w-4 h-4" />
+          <span className="font-medium">{t('nav.logout')}</span>
+        </button>
       </div>
 
       {/* Tabs */}
       <div className="border-b border-gray-200">
-        <nav className="flex space-x-8">
+        <nav className="flex space-x-8 overflow-x-auto">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -97,7 +151,7 @@ const AdminDashboard: React.FC = () => {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`
-                  flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors
+                  flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap
                   ${
                     activeTab === tab.id
                       ? 'border-blue-600 text-blue-600'
@@ -118,60 +172,31 @@ const AdminDashboard: React.FC = () => {
         <div className="space-y-6">
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Total Turnos</p>
-                  <p className="text-3xl font-bold text-gray-800 mt-1">
-                    {loading ? '...' : stats.total}
-                  </p>
+            {statsCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <div
+                  key={card.label}
+                  className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 transition-all duration-200 hover:-translate-y-1 hover:shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600">{card.label}</p>
+                      <p className={`text-3xl font-bold mt-1 ${card.color}`}>
+                        {loading ? '...' : card.value}
+                      </p>
+                    </div>
+                    <Icon className={`w-12 h-12 ${card.iconColor}`} />
+                  </div>
                 </div>
-                <Calendar className="w-12 h-12 text-blue-600 opacity-20" />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Confirmados</p>
-                  <p className="text-3xl font-bold text-green-600 mt-1">
-                    {loading ? '...' : stats.confirmed}
-                  </p>
-                </div>
-                <Activity className="w-12 h-12 text-green-600 opacity-20" />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Pendientes</p>
-                  <p className="text-3xl font-bold text-yellow-600 mt-1">
-                    {loading ? '...' : stats.pending}
-                  </p>
-                </div>
-                <Calendar className="w-12 h-12 text-yellow-600 opacity-20" />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Cancelados</p>
-                  <p className="text-3xl font-bold text-red-600 mt-1">
-                    {loading ? '...' : stats.cancelled}
-                  </p>
-                </div>
-                <Calendar className="w-12 h-12 text-red-600 opacity-20" />
-              </div>
-            </div>
+              );
+            })}
           </div>
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Appointments by Specialty */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold mb-4 text-gray-800">Turnos por Especialidad</h3>
+              <h3 className="text-lg font-semibold mb-4 text-gray-800">{t('admin.chart.specialty')}</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={appointmentsBySpecialty}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -179,14 +204,13 @@ const AdminDashboard: React.FC = () => {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="count" fill="#3B82F6" name="Turnos" />
+                  <Bar dataKey="count" fill="#3B82F6" name={t('admin.chart.turnos')} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
-            {/* Appointments by Day */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold mb-4 text-gray-800">Turnos por Día de la Semana</h3>
+              <h3 className="text-lg font-semibold mb-4 text-gray-800">{t('admin.chart.day')}</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={appointmentsByDay}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -194,7 +218,7 @@ const AdminDashboard: React.FC = () => {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="count" stroke="#3B82F6" strokeWidth={2} name="Turnos" />
+                  <Line type="monotone" dataKey="count" stroke="#3B82F6" strokeWidth={2} name={t('admin.chart.turnos')} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -202,39 +226,24 @@ const AdminDashboard: React.FC = () => {
 
           {/* Quick Actions */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold mb-4 text-gray-800">Acciones Rápidas</h3>
+            <h3 className="text-lg font-semibold mb-4 text-gray-800">{t('admin.quick.title')}</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button
-                onClick={() => setActiveTab('doctors')}
-                className="flex items-center gap-3 p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors text-left"
-              >
-                <UserCog className="w-8 h-8 text-blue-600" />
-                <div>
-                  <p className="font-medium text-gray-900">Gestionar Doctores</p>
-                  <p className="text-sm text-gray-600">Agregar o editar doctores</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('calendar')}
-                className="flex items-center gap-3 p-4 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors text-left"
-              >
-                <CalendarCheck className="w-8 h-8 text-purple-600" />
-                <div>
-                  <p className="font-medium text-gray-900">Ver Calendario</p>
-                  <p className="text-sm text-gray-600">Gestionar turnos diarios</p>
-                </div>
-              </button>
-
-              <button
-                className="flex items-center gap-3 p-4 bg-green-50 rounded-lg hover:bg-green-100 transition-colors text-left"
-              >
-                <Activity className="w-8 h-8 text-green-600" />
-                <div>
-                  <p className="font-medium text-gray-900">Reportes</p>
-                  <p className="text-sm text-gray-600">Generar estadísticas</p>
-                </div>
-              </button>
+              {quickActions.map((action) => {
+                const Icon = action.icon;
+                return (
+                  <button
+                    key={action.title}
+                    onClick={action.onClick}
+                    className={`flex items-center gap-3 p-4 rounded-lg transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.99] text-left ${action.bg}`}
+                  >
+                    <Icon className={`w-8 h-8 ${action.iconColor}`} />
+                    <div>
+                      <p className="font-medium text-gray-900">{action.title}</p>
+                      <p className="text-sm text-gray-600">{action.text}</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -242,6 +251,7 @@ const AdminDashboard: React.FC = () => {
 
       {activeTab === 'doctors' && <DoctorManagement />}
       {activeTab === 'calendar' && <AppointmentsCalendar />}
+      {activeTab === 'users' && <UserManagement />}
     </div>
   );
 };

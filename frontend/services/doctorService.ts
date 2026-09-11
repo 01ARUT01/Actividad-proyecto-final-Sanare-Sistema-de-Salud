@@ -1,6 +1,6 @@
 import { Doctor, CreateDoctorData, UpdateDoctorData, Specialty } from '../types/doctor';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+import { tt } from '../i18n';
+import { API_URL, readErrorMessage, ApiError } from './apiConfig';
 
 class DoctorService {
   private getAuthHeaders(): HeadersInit {
@@ -21,7 +21,7 @@ class DoctorService {
     });
 
     if (!response.ok) {
-      throw new Error('Error al obtener doctores');
+      throw new ApiError(await readErrorMessage(response, tt('doctor.errorGetDoctors')), response.status);
     }
 
     return response.json();
@@ -33,7 +33,7 @@ class DoctorService {
     });
 
     if (!response.ok) {
-      throw new Error('Error al obtener doctor');
+      throw new ApiError(await readErrorMessage(response, tt('doctor.errorGetDoctor')), response.status);
     }
 
     return response.json();
@@ -47,8 +47,7 @@ class DoctorService {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error al crear doctor');
+      throw new ApiError(await readErrorMessage(response, tt('doctor.errorCreate')), response.status);
     }
 
     return response.json();
@@ -62,8 +61,7 @@ class DoctorService {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error al actualizar doctor');
+      throw new ApiError(await readErrorMessage(response, tt('doctor.errorUpdate')), response.status);
     }
 
     return response.json();
@@ -76,8 +74,7 @@ class DoctorService {
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error al eliminar doctor');
+      throw new ApiError(await readErrorMessage(response, tt('doctor.errorDelete')), response.status);
     }
   }
 
@@ -87,29 +84,28 @@ class DoctorService {
     });
 
     if (!response.ok) {
-      throw new Error('Error al obtener especialidades');
+      throw new ApiError(await readErrorMessage(response, tt('doctor.errorGetSpecialties')), response.status);
     }
 
     return response.json();
   }
 
-  async getAvailableSlots(doctorId: string, date: Date): Promise<{
-    id: string;
-    startTime: string;
-    endTime: string;
-    durationMinutes: number;
-  }[]> {
-    const dateStr = date.toISOString().split('T')[0]; // Formato YYYY-MM-DD
-    const response = await fetch(
-      `${API_URL}/doctors/${doctorId}/available-slots?date=${dateStr}`, 
-      {
-        headers: this.getAuthHeaders(),
-      }
-    );
+  async getAvailableSlots(
+    doctorId: string,
+    date: Date,
+  ): Promise<{ id: string; startTime: string; endTime: string; durationMinutes: number }[]> {
+    // Fecha YYYY-MM-DD en zona LOCAL (evita corrimientos por UTC en husos positivos)
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+
+    const response = await fetch(`${API_URL}/doctors/${doctorId}/available-slots?date=${dateStr}`, {
+      headers: this.getAuthHeaders(),
+    });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error al obtener horarios disponibles');
+      throw new ApiError(await readErrorMessage(response, tt('doctor.errorGetSlots')), response.status);
     }
 
     return response.json();

@@ -1,6 +1,10 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { SpecialtiesService } from './specialties.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('specialties')
 @Controller('specialties')
@@ -23,7 +27,10 @@ export class SpecialtiesController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Crear una nueva especialidad' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Crear una nueva especialidad (solo Admin)' })
   @ApiResponse({ status: 201, description: 'Especialidad creada' })
   create(@Body() createDto: { name: string; description?: string }) {
     return this.specialtiesService.create(createDto);

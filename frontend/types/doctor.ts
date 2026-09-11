@@ -51,3 +51,13 @@ export interface AppointmentWithDetails {
     email: string;
   };
 }
+
+export interface WaitingListEntry {
+  id: string;
+  specialtyId: string;
+  patientName: string;
+  patientEmail: string | null;
+  patientPhone: string;
+  createdAt: string;
+  notified: boolean;
+}

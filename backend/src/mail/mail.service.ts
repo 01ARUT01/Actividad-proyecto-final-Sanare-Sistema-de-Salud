@@ -12,13 +12,16 @@ interface EmailOptions {
 @Injectable()
 export class MailService {
   private transporter: nodemailer.Transporter;
+  private transporterReady: Promise<void> | null = null;
   private readonly logger = new Logger(MailService.name);
 
   constructor(private configService: ConfigService) {
-    // Configuración del transportador de email
-    // En desarrollo, usamos Ethereal (servicio de testing)
-    // En producción, configura con Gmail, SendGrid, etc.
-    this.initializeTransporter();
+    this.transporterReady = this.initializeTransporter();
+  }
+
+  private async getTransporter(): Promise<nodemailer.Transporter> {
+    await this.transporterReady;
+    return this.transporter;
   }
 
   private async initializeTransporter() {
@@ -31,8 +34,8 @@ export class MailService {
       // Producción: usar credenciales reales
       this.transporter = nodemailer.createTransport({
         host: emailHost,
-        port: emailPort || 587,
-        secure: emailPort === 465,
+        port: Number(emailPort) || 587,
+        secure: String(emailPort) === '465',
         auth: {
           user: emailUser,
           pass: emailPass,
@@ -60,7 +63,8 @@ export class MailService {
 
   private async sendEmail(options: EmailOptions): Promise<void> {
     try {
-      const info = await this.transporter.sendMail({
+      const transporter = await this.getTransporter();
+      const info = await transporter.sendMail({
         from: this.configService.get('EMAIL_FROM') || '"SaludPública Connect" <noreply@saludpublica.com>',
         to: options.to,
         subject: options.subject,

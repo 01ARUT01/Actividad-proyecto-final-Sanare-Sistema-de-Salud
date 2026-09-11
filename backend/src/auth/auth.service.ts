@@ -3,16 +3,17 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { Prisma, User } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { RegisterDto, LoginDto } from './dto';
 import { UserEntity } from './entities/user.entity';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { AuthResponse } from './interfaces/auth-response.interface';
-import { User } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -48,17 +49,34 @@ export class AuthService {
     // Hash password
     const hashedPassword = await this.hashPassword(password);
 
-    // Crear usuario
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        firstName,
-        lastName,
-        phone,
-        dni,
-      },
-    });
+    // Crear usuario (capturar conflicto de unicidad ante registros concurrentes)
+    let user: User;
+    try {
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          firstName,
+          lastName,
+          phone,
+          dni,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const target = (error.meta?.target as string[]) ?? [];
+        if (target.includes('email')) {
+          throw new ConflictException('El email ya está registrado');
+        }
+        if (target.includes('dni')) {
+          throw new ConflictException('El DNI ya está registrado');
+        }
+      }
+      throw error;
+    }
 
     // Enviar email de bienvenida (no bloqueante)
     this.mailService
@@ -141,6 +159,52 @@ export class AuthService {
     }
 
     return this.mapToUserEntity(user);
+  }
+
+  async findAllUsers() {
+    return this.prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        dni: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: {
+          select: { appointments: true },
+        },
+      },
+    });
+  }
+
+  async removeUser(userId: string, requesterId: string): Promise<void> {
+    if (userId === requesterId) {
+      throw new BadRequestException('No puedes eliminar tu propia cuenta');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    await this.prisma.$transaction([
+      // Desvincular los turnos del usuario (sin borrarlos)
+      this.prisma.appointment.updateMany({
+        where: { userId },
+        data: { userId: null },
+      }),
+      this.prisma.user.delete({
+        where: { id: userId },
+      }),
+    ]);
   }
 
   // Métodos privados auxiliares

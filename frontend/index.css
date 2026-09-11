@@ -1,6 +1,73 @@
 body {
   font-family: 'Inter', sans-serif;
   margin: 0;
+  background-color: #f8fafc;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+body.dark {
+  background-color: #020617;
+  color: #e2e8f0;
+}
+
+body.dark #root {
+  background-color: #020617;
+  min-height: 100vh;
+}
+
+body.dark .bg-slate-50 {
+  background-color: #0f172a !important;
+}
+
+body.dark .bg-white {
+  background-color: #111827 !important;
+}
+
+body.dark .bg-slate-900 {
+  background-color: #020617 !important;
+}
+
+body.dark .bg-gray-50 {
+  background-color: #0f172a !important;
+}
+
+body.dark .bg-blue-50,
+body.dark .bg-purple-50,
+body.dark .bg-green-50 {
+  background-color: #0f172a !important;
+}
+
+body.dark .text-slate-900,
+body.dark .text-gray-900,
+body.dark .text-gray-800 {
+  color: #f8fafc !important;
+}
+
+body.dark .text-slate-600,
+body.dark .text-slate-500,
+body.dark .text-gray-600,
+body.dark .text-gray-500,
+body.dark .text-gray-700 {
+  color: #cbd5e1 !important;
+}
+
+body.dark .text-blue-600 {
+  color: #93c5fd !important;
+}
+
+body.dark .text-blue-200 {
+  color: #bfdbfe !important;
+}
+
+body.dark .border-slate-100,
+body.dark .border-gray-200,
+body.dark .border-gray-300 {
+  border-color: #334155 !important;
+}
+
+body.dark .shadow-sm,
+body.dark .shadow-lg {
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.45) !important;
 }
 
 @keyframes fade-in {
@@ -16,4 +83,65 @@ body {
 
 .animate-fade-in {
   animation: fade-in 0.6s ease-out forwards;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.5s ease-out forwards;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(0.98);
+  }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.bg-animate-grad {
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease infinite;
+}
+
+.stagger > * {
+  animation: fade-up 0.5s ease-out both;
+}
+.stagger > *:nth-child(1) {
+  animation-delay: 0.05s;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 0.12s;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 0.19s;
 }

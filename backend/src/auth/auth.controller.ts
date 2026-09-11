@@ -1,11 +1,14 @@
-import { Controller, Post, Get, Body, UseGuards, HttpCode, HttpStatus, Request } from '@nestjs/common';
+import { Controller, Post, Get, Delete, Body, Param, UseGuards, HttpCode, HttpStatus, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto } from './dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
 import { GetUser } from './decorators/get-user.decorator';
 import { UserEntity } from './entities/user.entity';
 import { AuthResponse } from './interfaces/auth-response.interface';
+import { UserRole } from '@prisma/client';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -50,6 +53,32 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'No autorizado' })
   async getProfile(@GetUser() user: UserEntity): Promise<UserEntity> {
     return this.authService.getProfile(user.id);
+  }
+
+  @Get('users')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Obtener todos los usuarios (solo Admin)' })
+  @ApiResponse({ status: 200, description: 'Lista de usuarios' })
+  async getAllUsers() {
+    return this.authService.findAllUsers();
+  }
+
+  @Delete('users/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Eliminar un usuario (solo Admin)' })
+  @ApiResponse({ status: 200, description: 'Usuario eliminado' })
+  @ApiResponse({ status: 400, description: 'No se puede eliminar la propia cuenta' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  async removeUser(
+    @Param('id') id: string,
+    @GetUser() user: UserEntity,
+  ) {
+    return this.authService.removeUser(id, user.id);
   }
 
   @Get('debug/me')

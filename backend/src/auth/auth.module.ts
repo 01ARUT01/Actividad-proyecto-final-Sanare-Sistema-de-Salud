@@ -15,7 +15,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'super-secret-key-change-in-production',
       signOptions: {
-        expiresIn: '7d', // Token válido por 7 días
+        expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as never,
       },
     }),
   ],

@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useI18n } from '../context/I18nContext';
 import { UserPlus, Mail, Lock, User, Phone, CreditCard } from 'lucide-react';
+import Button from './ui/Button';
+import Field from './ui/Field';
+import Banner from './ui/Banner';
+import LanguageSelect from './LanguageSelect';
 
 export default function Register() {
   const [formData, setFormData] = useState({
@@ -16,6 +21,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -30,198 +36,158 @@ export default function Register() {
     setError('');
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Las contraseñas no coinciden');
+      setError(t('register.errorMismatch'));
       return;
     }
 
     if (formData.password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres');
+      setError(t('register.errorLength'));
       return;
     }
 
     setLoading(true);
 
     try {
-      const { confirmPassword, ...registerData } = formData;
-      await register(registerData);
+      const { confirmPassword, phone, dni, ...rest } = formData;
+      await register({
+        ...rest,
+        ...(phone.trim() ? { phone: phone.trim() } : {}),
+        ...(dni.trim() ? { dni: dni.trim() } : {}),
+      });
       navigate('/');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al registrar usuario');
+      setError(err instanceof Error ? err.message : t('register.errorGeneric'));
     } finally {
       setLoading(false);
     }
   };
 
+  const inputClass =
+    'w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg transition-all focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none';
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4 py-12">
-      <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-8">
+      <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl p-8 animate-fade-up">
+        <div className="flex justify-end -mb-8">
+          <LanguageSelect variant="page" />
+        </div>
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
             <UserPlus className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">Crear Cuenta</h1>
-          <p className="text-gray-600 mt-2">Regístrate en Salud Pública Connect</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('register.title')}</h1>
+          <p className="text-gray-600 mt-2">{t('register.subtitle')}</p>
         </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-700 text-sm">{error}</p>
-          </div>
-        )}
+        {error && <Banner variant="error" className="mb-6">{error}</Banner>}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
-                Nombre *
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  id="firstName"
-                  name="firstName"
-                  type="text"
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Juan"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
-                Apellido *
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  id="lastName"
-                  name="lastName"
-                  type="text"
-                  value={formData.lastName}
-                  onChange={handleChange}
-                  required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Pérez"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-              Email *
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Field id="firstName" label={t('register.firstName')} icon={<User className="w-5 h-5" />} required>
               <input
-                id="email"
-                name="email"
-                type="email"
-                value={formData.email}
+                id="firstName"
+                name="firstName"
+                type="text"
+                value={formData.firstName}
                 onChange={handleChange}
                 required
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="tu@email.com"
+                className={inputClass}
+                placeholder={t('ph.firstName')}
               />
-            </div>
+            </Field>
+
+            <Field id="lastName" label={t('register.lastName')} icon={<User className="w-5 h-5" />} required>
+              <input
+                id="lastName"
+                name="lastName"
+                type="text"
+                value={formData.lastName}
+                onChange={handleChange}
+                required
+                className={inputClass}
+                placeholder={t('ph.lastName')}
+              />
+            </Field>
+          </div>
+
+          <Field id="email" label={t('common.email')} icon={<Mail className="w-5 h-5" />} required>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              value={formData.email}
+              onChange={handleChange}
+              required
+              className={inputClass}
+              placeholder={t('ph.email')}
+            />
+          </Field>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Field id="phone" label={t('common.phone')} icon={<Phone className="w-5 h-5" />}>
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                value={formData.phone}
+                onChange={handleChange}
+                className={inputClass}
+                placeholder={t('ph.phone')}
+              />
+            </Field>
+
+            <Field id="dni" label={t('register.dniLabel')} icon={<CreditCard className="w-5 h-5" />}>
+              <input
+                id="dni"
+                name="dni"
+                type="text"
+                value={formData.dni}
+                onChange={handleChange}
+                className={inputClass}
+                placeholder={t('ph.dni')}
+                pattern="\d{7,8}"
+              />
+            </Field>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                Teléfono
-              </label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="+54 11 1234-5678"
-                />
-              </div>
-            </div>
+            <Field id="password" label={t('common.password')} icon={<Lock className="w-5 h-5" />} required>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+                className={inputClass}
+                placeholder="••••••••"
+              />
+            </Field>
 
-            <div>
-              <label htmlFor="dni" className="block text-sm font-medium text-gray-700 mb-2">
-                DNI
-              </label>
-              <div className="relative">
-                <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  id="dni"
-                  name="dni"
-                  type="text"
-                  value={formData.dni}
-                  onChange={handleChange}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="12345678"
-                  pattern="\d{7,8}"
-                />
-              </div>
-            </div>
+            <Field id="confirmPassword" label={t('register.confirmPassword')} icon={<Lock className="w-5 h-5" />} required>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                required
+                className={inputClass}
+                placeholder="••••••••"
+              />
+            </Field>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                Contraseña *
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                Confirmar Contraseña *
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="••••••••"
-                />
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? 'Creando cuenta...' : 'Crear Cuenta'}
-          </button>
+          <Button type="submit" full loading={loading} size="lg">
+            {loading ? t('register.creating') : t('register.submit')}
+          </Button>
         </form>
 
         <div className="mt-6 text-center">
           <p className="text-gray-600">
-            ¿Ya tienes cuenta?{' '}
+            {t('register.haveAccount')}{' '}
             <Link to="/login" className="text-blue-600 font-semibold hover:text-blue-700">
-              Inicia sesión aquí
+              {t('register.loginLink')}
             </Link>
           </p>
         </div>

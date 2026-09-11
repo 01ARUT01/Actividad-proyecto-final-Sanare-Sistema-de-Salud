@@ -1,8 +1,19 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  ForbiddenException,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { AppointmentsService } from './appointments.service';
 import { AppointmentStatus } from '@prisma/client';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
+import { CreateWaitingListDto } from './dto/create-waiting-list.dto';
 import { AppointmentEntity } from './entities/appointment.entity';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -19,14 +30,20 @@ export class AppointmentsController {
   constructor(private readonly appointmentsService: AppointmentsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Obtener todos los turnos' })
+  @ApiOperation({ summary: 'Obtener turnos (Admin o propios del paciente)' })
   @ApiQuery({ name: 'status', required: false, enum: AppointmentStatus })
   @ApiResponse({ status: 200, description: 'Lista de turnos', type: [AppointmentEntity] })
   findAll(
     @Query('status') status?: AppointmentStatus,
     @GetUser() user?: UserEntity,
   ) {
-    return this.appointmentsService.findAll(status);
+    if (user.role === UserRole.ADMIN) {
+      return this.appointmentsService.findAll(status);
+    }
+    if (user.role === UserRole.DOCTOR) {
+      throw new ForbiddenException('El rol DOCTOR no puede listar turnos');
+    }
+    return this.appointmentsService.findAll(status, user.id);
   }
 
   @Get('stats')
@@ -37,12 +54,37 @@ export class AppointmentsController {
     return this.appointmentsService.getStats();
   }
 
+  @Get('waiting-list')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Obtener lista de espera activa (solo Admin)' })
+  @ApiResponse({ status: 200, description: 'Lista de espera actual' })
+  getWaitingList() {
+    return this.appointmentsService.getWaitingList();
+  }
+
+  @Post('waiting-list')
+  @Roles(UserRole.PATIENT)
+  @ApiOperation({ summary: 'Agregar una persona a la lista de espera' })
+  @ApiResponse({ status: 201, description: 'Persona agregada a la lista de espera' })
+  createWaitingList(
+    @Body() createDto: CreateWaitingListDto,
+    @GetUser() user: UserEntity,
+  ) {
+    void user;
+    return this.appointmentsService.createWaitingList(createDto);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Obtener un turno por ID' })
   @ApiResponse({ status: 200, description: 'Turno encontrado', type: AppointmentEntity })
   @ApiResponse({ status: 404, description: 'Turno no encontrado' })
-  findOne(@Param('id') id: string) {
-    return this.appointmentsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @GetUser() user: UserEntity,
+  ) {
+    const appointment = await this.appointmentsService.findOne(id);
+    this.assertCanAccess(user, appointment);
+    return appointment;
   }
 
   @Post()
@@ -62,14 +104,25 @@ export class AppointmentsController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Cancelar un turno' })
+  @ApiOperation({ summary: 'Cancelar un turno (Admin o propio)' })
   @ApiResponse({ status: 200, description: 'Turno cancelado' })
-  @ApiResponse({ status: 400, description: 'Turno no encontrado' })
-  cancel(
+  @ApiResponse({ status: 404, description: 'Turno no encontrado' })
+  async cancel(
     @Param('id') id: string,
     @GetUser() user: UserEntity,
   ) {
+    const appointment = await this.appointmentsService.findOne(id);
+    this.assertCanAccess(user, appointment);
     return this.appointmentsService.cancel(id);
+  }
+
+  private assertCanAccess(
+    user: UserEntity,
+    appointment: { userId: string | null },
+  ): void {
+    if (user.role === UserRole.ADMIN) return;
+    if (appointment.userId && appointment.userId === user.id) return;
+    throw new ForbiddenException('No tienes permiso para acceder a este turno');
   }
 }
 

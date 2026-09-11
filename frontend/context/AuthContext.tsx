@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, RegisterData, LoginData } from '../types/auth';
 import { authService } from '../services/authService';
+import { ApiError } from '../services/apiConfig';
 
 interface AuthContextType {
   user: User | null;
@@ -25,8 +26,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setUser(profile);
         }
       } catch (error) {
-        console.error('Error loading user:', error);
-        authService.removeToken();
+        // Solo desloguear si la sesión realmente expiró (401).
+        // Un fallo de red/500 temporal no debe eliminar un token válido.
+        if (error instanceof ApiError && error.status === 401) {
+          authService.removeToken();
+        } else {
+          console.warn('Error loading user (sesión conservada):', error);
+        }
       } finally {
         setLoading(false);
       }

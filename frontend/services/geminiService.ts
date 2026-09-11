@@ -3,24 +3,91 @@ import { Specialty, TriageResult } from '../types';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-// Safe initialization of the client inside functions to avoid initialization errors if key is missing during load
 const getAiClient = () => {
   if (!apiKey) {
-    console.error("API_KEY is missing");
+    console.warn("VITE_GEMINI_API_KEY no configurada. Se usará el modo local.");
     return null;
   }
   return new GoogleGenAI({ apiKey });
 };
 
+const normalize = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+const getLocalTriageResult = (symptoms: string): TriageResult => {
+  const text = normalize(symptoms);
+
+  const emergencyPatterns = [
+    'falta de aire', 'dificultad respiratoria', 'dolor fuerte al pecho', 'desmayo', 'sangrado abundante',
+    'convulsiones', 'dolor intenso', 'inconsciente', 'cefalea intensa'
+  ];
+
+  const pediatricPatterns = ['niño', 'nina', 'bebé', 'infantil', 'infancia'];
+  const gynecologyPatterns = ['embarazo', 'sangrado menstrual', 'dolor pélvico', 'ovario', 'vaginal'];
+  const dermatologyPatterns = ['erupcion', 'picazon', 'comezon', 'rash', 'hinchazon', 'urticaria'];
+  const neurologyPatterns = ['mareo', 'debilidad', 'confusion', 'dolor de cabeza', 'convulsion', 'temblor'];
+  const traumaPatterns = ['caida', 'fractura', 'esguince', 'trauma', 'accidente'];
+
+  const hasAny = (patterns: string[]) => patterns.some((pattern) => text.includes(pattern));
+
+  if (hasAny(emergencyPatterns)) {
+    return {
+      recommendedSpecialty: Specialty.GENERAL,
+      urgency: 'Alta',
+      reasoning: 'Se detectan síntomas potencialmente urgentes. Requiere valoración médica urgente o atención inmediata.',
+    };
+  }
+
+  if (hasAny(pediatricPatterns)) {
+    return {
+      recommendedSpecialty: Specialty.PEDIATRICS,
+      urgency: 'Media',
+      reasoning: 'Los síntomas apuntan a una consulta pediátrica para evaluación apropiada del niño o adolescente.',
+    };
+  }
+
+  if (hasAny(gynecologyPatterns)) {
+    return {
+      recommendedSpecialty: Specialty.GYNECOLOGY,
+      urgency: 'Media',
+      reasoning: 'Se recomienda valoración ginecológica para evaluar los síntomas reportados.',
+    };
+  }
+
+  if (hasAny(dermatologyPatterns)) {
+    return {
+      recommendedSpecialty: Specialty.DERMATOLOGY,
+      urgency: 'Baja',
+      reasoning: 'Los síntomas son compatibles con una consulta dermatológica.',
+    };
+  }
+
+  if (hasAny(neurologyPatterns)) {
+    return {
+      recommendedSpecialty: Specialty.NEUROLOGY,
+      urgency: 'Media',
+      reasoning: 'Existe sospecha de síntomas neurológicos y se recomienda evaluación especializada.',
+    };
+  }
+
+  if (hasAny(traumaPatterns)) {
+    return {
+      recommendedSpecialty: Specialty.TRAUMATOLOGY,
+      urgency: 'Media',
+      reasoning: 'Los síntomas sugieren una lesión o trauma que requiere revisión traumatológica.',
+    };
+  }
+
+  return {
+    recommendedSpecialty: Specialty.GENERAL,
+    urgency: 'Baja',
+    reasoning: 'Modo local: se recomienda una consulta médica general y seguimiento si los síntomas persisten.',
+  };
+};
+
 export const analyzeSymptoms = async (symptoms: string): Promise<TriageResult> => {
   const ai = getAiClient();
   if (!ai) {
-    // Fallback mock response if no API key
-    return {
-      recommendedSpecialty: Specialty.GENERAL,
-      urgency: 'Baja',
-      reasoning: 'Modo de demostración: API Key no configurada. Se recomienda médico general.'
-    };
+    return getLocalTriageResult(symptoms);
   }
 
   try {
@@ -70,10 +137,6 @@ export const analyzeSymptoms = async (symptoms: string): Promise<TriageResult> =
 
   } catch (error) {
     console.error("Error analyzing symptoms:", error);
-    return {
-      recommendedSpecialty: Specialty.GENERAL,
-      urgency: 'Media',
-      reasoning: 'Hubo un error analizando los síntomas. Por favor consulte con un médico general.'
-    };
+    return getLocalTriageResult(symptoms);
   }
 };

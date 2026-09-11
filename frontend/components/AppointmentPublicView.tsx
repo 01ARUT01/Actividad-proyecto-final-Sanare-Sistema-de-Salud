@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar, Clock, MapPin, User, Phone, Mail, AlertCircle, CheckCircle, Loader2, XCircle } from 'lucide-react';
+import {
+  Calendar, Clock, MapPin, User, Phone, Mail, AlertCircle, CheckCircle, XCircle,
+} from 'lucide-react';
+import { useI18n } from '../context/I18nContext';
+import { formatDate, formatTime } from '../utils/format';
+import { API_URL, readErrorMessage } from '../services/apiConfig';
+import Button from './ui/Button';
+import Banner from './ui/Banner';
+import Spinner from './ui/Spinner';
 
 interface AppointmentDetails {
   id: string;
@@ -23,6 +31,7 @@ interface AppointmentDetails {
 const AppointmentPublicView: React.FC = () => {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
+  const { t, locale } = useI18n();
   const [appointment, setAppointment] = useState<AppointmentDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -33,29 +42,29 @@ const AppointmentPublicView: React.FC = () => {
   useEffect(() => {
     loadAppointment();
 
-    // Check if user wants to cancel via URL parameter
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('action') === 'cancel') {
       setShowCancelDialog(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const loadAppointment = async () => {
     if (!token) {
-      setError('Token inválido');
+      setError(t('public.invalidToken'));
       setLoading(false);
       return;
     }
 
     try {
-      const response = await fetch(`http://localhost:3001/appointments-public/token/${token}`);
+      const response = await fetch(`${API_URL}/appointments-public/token/${token}`);
       if (!response.ok) {
-        throw new Error('No se pudo cargar el turno');
+        throw new Error(await readErrorMessage(response, t('public.errorLoad')));
       }
       const data = await response.json();
       setAppointment(data);
     } catch (err: any) {
-      setError(err.message || 'Error al cargar el turno');
+      setError(err.message || t('public.errorLoadGeneric'));
     } finally {
       setLoading(false);
     }
@@ -71,41 +80,28 @@ const AppointmentPublicView: React.FC = () => {
     setError('');
 
     try {
-      const response = await fetch(`http://localhost:3001/appointments-public/cancel/${token}`, {
+      const response = await fetch(`${API_URL}/appointments-public/cancel/${token}`, {
         method: 'POST',
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Error al cancelar el turno');
+        throw new Error(await readErrorMessage(response, t('public.errorCancel')));
       }
 
       setCancelled(true);
-      // Recargar los detalles del turno
       await loadAppointment();
     } catch (err: any) {
-      setError(err.message || 'Error al cancelar el turno');
+      setError(err.message || t('public.errorCancel'));
     } finally {
       setCancelling(false);
     }
-  };
-
-  const formatDateTime = (isoDate: string) => {
-    const date = new Date(isoDate);
-    return {
-      date: date.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
-      time: date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
-    };
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="flex items-center justify-center">
-            <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-            <span className="ml-3 text-gray-600">Cargando turno...</span>
-          </div>
+          <Spinner label={t('public.loading')} />
         </div>
       </div>
     );
@@ -114,81 +110,117 @@ const AppointmentPublicView: React.FC = () => {
   if (error || !appointment) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
+        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full animate-fade-up">
           <div className="text-center">
             <AlertCircle className="w-16 h-16 text-red-600 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Error</h2>
-            <p className="text-gray-600 mb-6">{error || 'Turno no encontrado'}</p>
-            <button
-              onClick={() => navigate('/')}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Volver al Inicio
-            </button>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('public.errorTitle')}</h2>
+            <p className="text-gray-600 mb-6">{error || t('public.notFound')}</p>
+            <Button onClick={() => navigate('/')}>{t('public.backHome')}</Button>
           </div>
         </div>
       </div>
     );
   }
 
-  const { date: formattedDate, time: formattedTime } = formatDateTime(appointment.date);
+  const formattedDate = formatDate(appointment.date, locale);
+  const formattedTime = formatTime(appointment.date, locale);
   const appointmentDate = new Date(appointment.date);
   const isPast = appointmentDate < new Date();
-  const canCancel = appointment.status !== 'CANCELLED' && !isPast;
+  const canCancel =
+    appointment.status !== 'CANCELLED' &&
+    appointment.status !== 'COMPLETED' &&
+    !isPast;
+
+  const statusConfig: Record<AppointmentDetails['status'], { headerKey: string; bg: string }> = {
+    PENDING: { headerKey: 'public.headerPending', bg: 'bg-yellow-500' },
+    CONFIRMED: { headerKey: 'public.headerConfirmed', bg: 'bg-green-500' },
+    CANCELLED: { headerKey: 'public.headerCancelled', bg: 'bg-red-500' },
+    COMPLETED: { headerKey: 'public.headerCompleted', bg: 'bg-blue-500' },
+  };
+  const isCancelled = appointment.status === 'CANCELLED';
+  const isPending = appointment.status === 'PENDING';
+
+  const infoRows = [
+    {
+      icon: <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />,
+      label: t('public.dateTime'),
+      value: <p className="text-lg text-gray-900 capitalize">{formattedDate} · {formattedTime}</p>,
+    },
+    {
+      icon: <User className="w-5 h-5 text-gray-400 mt-0.5" />,
+      label: t('common.doctor'),
+      value: (
+        <>
+          <p className="text-lg text-gray-900">{appointment.doctor.name}</p>
+          <p className="text-sm text-gray-600">{appointment.doctor.specialty.name}</p>
+        </>
+      ),
+    },
+    {
+      icon: <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />,
+      label: t('common.hospital'),
+      value: <p className="text-lg text-gray-900">{appointment.doctor.hospital}</p>,
+    },
+  ];
+
+  const patientRows = [
+    {
+      icon: <User className="w-5 h-5 text-gray-400 mt-0.5" />,
+      label: t('common.name'),
+      value: <p className="text-lg text-gray-900">{appointment.patientName}</p>,
+    },
+    {
+      icon: <Phone className="w-5 h-5 text-gray-400 mt-0.5" />,
+      label: t('common.phone'),
+      value: <p className="text-lg text-gray-900">{appointment.patientPhone}</p>,
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
       {/* Cancel Confirmation Dialog */}
       {showCancelDialog && canCancel && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 animate-fade-up">
             <div className="flex items-center space-x-3 mb-4">
               <AlertCircle className="w-8 h-8 text-red-600" />
-              <h3 className="text-xl font-bold text-gray-900">Cancelar Turno</h3>
+              <h3 className="text-xl font-bold text-gray-900">{t('public.cancelTitle')}</h3>
             </div>
-            <p className="text-gray-600 mb-6">
-              ¿Estás seguro de que deseas cancelar este turno? Esta acción no se puede deshacer.
-            </p>
+            <p className="text-gray-600 mb-6">{t('public.cancelConfirm')}</p>
             <div className="flex space-x-3">
-              <button
+              <Button
+                variant="secondary"
+                full
                 onClick={() => setShowCancelDialog(false)}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors font-medium"
               >
-                No, mantener turno
-              </button>
-              <button
-                onClick={handleCancel}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
-              >
-                Sí, cancelar
-              </button>
+                {t('public.cancelKeep')}
+              </Button>
+              <Button variant="danger" full onClick={handleCancel}>
+                {t('public.cancelYes')}
+              </Button>
             </div>
           </div>
         </div>
       )}
 
       <div className="max-w-3xl mx-auto">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden animate-fade-up">
           {/* Header */}
-          <div className={`px-8 py-6 ${
-            appointment.status === 'CANCELLED' ? 'bg-red-500' :
-            appointment.status === 'CONFIRMED' ? 'bg-green-500' :
-            'bg-blue-500'
-          }`}>
+          <div className={`px-8 py-6 ${statusConfig[appointment.status].bg}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3 text-white">
-                {appointment.status === 'CANCELLED' ? (
+                {isCancelled ? (
                   <XCircle className="w-8 h-8" />
+                ) : isPending ? (
+                  <Clock className="w-8 h-8" />
                 ) : (
                   <CheckCircle className="w-8 h-8" />
                 )}
                 <div>
                   <h1 className="text-2xl font-bold">
-                    {appointment.status === 'CANCELLED' ? 'Turno Cancelado' : 'Turno Confirmado'}
+                    {t(statusConfig[appointment.status].headerKey)}
                   </h1>
-                  <p className="text-sm opacity-90">
-                    ID: {appointment.id.slice(0, 8)}
-                  </p>
+                  <p className="text-sm opacity-90">ID: {appointment.id.slice(0, 8)}</p>
                 </div>
               </div>
             </div>
@@ -196,85 +228,60 @@ const AppointmentPublicView: React.FC = () => {
 
           {/* Success Message after cancellation */}
           {cancelled && (
-            <div className="mx-8 mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-center space-x-3">
-                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                <p className="text-green-800">
-                  Tu turno ha sido cancelado exitosamente. Recibirás un email de confirmación.
-                </p>
-              </div>
+            <div className="mx-8 mt-6">
+              <Banner variant="success">
+                <div className="flex items-center space-x-3">
+                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                  <p>{t('public.cancelledMessage')}</p>
+                </div>
+              </Banner>
             </div>
           )}
 
           {/* Error Message */}
           {error && !cancelled && (
-            <div className="mx-8 mt-6 bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-center space-x-3">
-                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-                <p className="text-red-800">{error}</p>
-              </div>
+            <div className="mx-8 mt-6">
+              <Banner variant="error">{error}</Banner>
             </div>
           )}
 
           {/* Content */}
           <div className="p-8 space-y-6">
             <div>
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">Detalles del Turno</h2>
-
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">{t('public.details')}</h2>
               <div className="space-y-4">
-                <div className="flex items-start space-x-3">
-                  <Calendar className="w-5 h-5 text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Fecha y Hora</p>
-                    <p className="text-lg text-gray-900 capitalize">{formattedDate}</p>
-                    <p className="text-lg text-gray-900">{formattedTime}</p>
+                {infoRows.map((row) => (
+                  <div key={row.label} className="flex items-start space-x-3">
+                    <span className="mt-0.5 flex">{row.icon}</span>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">{row.label}</p>
+                      {row.value}
+                    </div>
                   </div>
-                </div>
-
-                <div className="flex items-start space-x-3">
-                  <User className="w-5 h-5 text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Doctor</p>
-                    <p className="text-lg text-gray-900">{appointment.doctor.name}</p>
-                    <p className="text-sm text-gray-600">{appointment.doctor.specialty.name}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start space-x-3">
-                  <MapPin className="w-5 h-5 text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Hospital</p>
-                    <p className="text-lg text-gray-900">{appointment.doctor.hospital}</p>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 
             <div className="border-t pt-6">
-              <h2 className="text-lg font-semibold text-gray-800 mb-4">Datos del Paciente</h2>
-
+              <h2 className="text-lg font-semibold text-gray-800 mb-4">{t('public.patientData')}</h2>
               <div className="space-y-4">
-                <div className="flex items-start space-x-3">
-                  <User className="w-5 h-5 text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Nombre</p>
-                    <p className="text-lg text-gray-900">{appointment.patientName}</p>
+                {patientRows.map((row) => (
+                  <div key={row.label} className="flex items-start space-x-3">
+                    <span className="mt-0.5 flex">{row.icon}</span>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">{row.label}</p>
+                      {row.value}
+                    </div>
                   </div>
-                </div>
-
-                <div className="flex items-start space-x-3">
-                  <Phone className="w-5 h-5 text-gray-400 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Teléfono</p>
-                    <p className="text-lg text-gray-900">{appointment.patientPhone}</p>
-                  </div>
-                </div>
+                ))}
 
                 {appointment.patientEmail && (
                   <div className="flex items-start space-x-3">
-                    <Mail className="w-5 h-5 text-gray-400 mt-0.5" />
+                    <span className="mt-0.5 flex">
+                      <Mail className="w-5 h-5 text-gray-400" />
+                    </span>
                     <div>
-                      <p className="text-sm font-medium text-gray-500">Email</p>
+                      <p className="text-sm font-medium text-gray-500">{t('common.email')}</p>
                       <p className="text-lg text-gray-900">{appointment.patientEmail}</p>
                     </div>
                   </div>
@@ -283,7 +290,7 @@ const AppointmentPublicView: React.FC = () => {
 
               {appointment.notes && (
                 <div className="mt-4 bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm font-medium text-gray-500 mb-1">Notas</p>
+                  <p className="text-sm font-medium text-gray-500 mb-1">{t('common.notes')}</p>
                   <p className="text-gray-900">{appointment.notes}</p>
                 </div>
               )}
@@ -292,53 +299,43 @@ const AppointmentPublicView: React.FC = () => {
             {/* Actions */}
             <div className="border-t pt-6 space-y-4">
               {canCancel && (
-                <button
+                <Button
                   onClick={() => setShowCancelDialog(true)}
                   disabled={cancelling}
-                  className="w-full px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-semibold flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  variant="danger"
+                  full
                 >
                   {cancelling ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>Cancelando...</span>
+                      <Clock className="w-5 h-5 animate-spin" />
+                      <span>{t('public.cancelling')}</span>
                     </>
                   ) : (
                     <>
                       <XCircle className="w-5 h-5" />
-                      <span>Cancelar Turno</span>
+                      <span>{t('public.cancelTitle')}</span>
                     </>
                   )}
-                </button>
+                </Button>
               )}
 
               {appointment.status === 'CANCELLED' && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <p className="text-sm text-yellow-800">
-                    Este turno ha sido cancelado. Si necesitas un nuevo turno, por favor ingresa al sistema.
-                  </p>
-                </div>
+                <Banner variant="warning">{t('public.cancelledBanner')}</Banner>
               )}
 
               {isPast && appointment.status !== 'CANCELLED' && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <p className="text-sm text-gray-600">
-                    Este turno ya pasó.
-                  </p>
-                </div>
+                <Banner variant="info">{t('public.pastBanner')}</Banner>
               )}
 
-              <button
-                onClick={() => navigate('/')}
-                className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
-              >
-                Volver al Inicio
-              </button>
+              <Button onClick={() => navigate('/')} full>
+                {t('public.backHome')}
+              </Button>
             </div>
           </div>
         </div>
 
         <div className="mt-6 text-center text-sm text-gray-500">
-          <p>© 2025 SaludPública Connect</p>
+          <p>{t('public.footer', { year: new Date().getFullYear() })}</p>
         </div>
       </div>
     </div>

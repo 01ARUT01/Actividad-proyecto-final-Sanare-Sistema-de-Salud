@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../common/prisma/prisma.service';
@@ -14,9 +18,9 @@ export class AppointmentsService {
     @InjectQueue('notifications') private notificationQueue: Queue,
   ) {}
 
-  async findAll(status?: AppointmentStatus) {
-    return this.prisma.appointment.findMany({
-      where: status ? { status } : undefined,
+  async findAll(status?: AppointmentStatus, userId?: string) {
+    const result = await this.prisma.appointment.findMany({
+      where: { ...(status ? { status } : {}), ...(userId ? { userId } : {}) },
       include: {
         doctor: {
           include: { specialty: true },
@@ -24,10 +28,11 @@ export class AppointmentsService {
       },
       orderBy: { date: 'desc' },
     });
+    return result.map((appointment) => this.stripCancellationToken(appointment));
   }
 
   async findOne(id: string) {
-    return this.prisma.appointment.findUnique({
+    const appointment = await this.prisma.appointment.findUnique({
       where: { id },
       include: {
         doctor: {
@@ -35,6 +40,12 @@ export class AppointmentsService {
         },
       },
     });
+
+    if (!appointment) {
+      throw new NotFoundException('Turno no encontrado');
+    }
+
+    return this.stripCancellationToken(appointment);
   }
 
   async create(data: {
@@ -52,7 +63,7 @@ export class AppointmentsService {
     // Usar transacción para evitar race condition
     // Esto garantiza que verificar y marcar el slot sea atómico
     const appointment = await this.prisma.$transaction(async (tx) => {
-      // Verificar que el horario esté disponible Y marcarlo como ocupado en una sola operación
+      // Verificar que el horario esté disponible
       const slot = await tx.availableSlot.findFirst({
         where: {
           doctorId: data.doctorId,
@@ -66,11 +77,16 @@ export class AppointmentsService {
         throw new BadRequestException('El horario seleccionado no está disponible');
       }
 
-      // Marcar el slot como ocupado INMEDIATAMENTE dentro de la transacción
-      await tx.availableSlot.update({
-        where: { id: slot.id },
+      // Marcar el slot como ocupado de forma ATÓMICA: solo gana la transacción
+      // que logre marcar isBooked:true; cualquier competidora recibe count 0.
+      const claimed = await tx.availableSlot.updateMany({
+        where: { id: slot.id, isBooked: false },
         data: { isBooked: true },
       });
+
+      if (claimed.count === 0) {
+        throw new BadRequestException('El horario seleccionado no está disponible');
+      }
 
       // Crear el turno dentro de la misma transacción
       const newAppointment = await tx.appointment.create({
@@ -137,7 +153,18 @@ export class AppointmentsService {
       );
     }
 
-    return appointment;
+    return this.stripCancellationToken(appointment);
+  }
+
+  /**
+   * Elimina el cancellationToken de la respuesta: ese token es un secreto
+   * que solo debe llegar al paciente vía email, nunca al cliente.
+   */
+  private stripCancellationToken<
+    T extends { cancellationToken?: string },
+  >(data: T): Omit<T, 'cancellationToken'> {
+    const { cancellationToken: _removed, ...safe } = data;
+    return safe;
   }
 
   async cancel(id: string) {
@@ -147,7 +174,19 @@ export class AppointmentsService {
     });
 
     if (!appointment) {
-      throw new BadRequestException('Turno no encontrado');
+      throw new NotFoundException('Turno no encontrado');
+    }
+
+    if (appointment.status === AppointmentStatus.CANCELLED) {
+      throw new BadRequestException('Este turno ya fue cancelado');
+    }
+
+    if (appointment.status === AppointmentStatus.COMPLETED) {
+      throw new BadRequestException('No se puede cancelar un turno completado');
+    }
+
+    if (appointment.date < new Date()) {
+      throw new BadRequestException('No se puede cancelar un turno que ya pasó');
     }
 
     // Marcar turno como cancelado
@@ -193,7 +232,7 @@ export class AppointmentsService {
       date: appointment.date,
     });
 
-    return updated;
+    return this.stripCancellationToken(updated);
   }
 
   async cancelByToken(token: string) {
@@ -237,7 +276,29 @@ export class AppointmentsService {
       throw new BadRequestException('Token inválido');
     }
 
-    return appointment;
+    return this.stripCancellationToken(appointment);
+  }
+
+  async getWaitingList() {
+    return this.prisma.waitingList.findMany({
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async createWaitingList(data: {
+    specialtyId: string;
+    patientName: string;
+    patientEmail?: string;
+    patientPhone: string;
+  }) {
+    return this.prisma.waitingList.create({
+      data: {
+        specialtyId: data.specialtyId,
+        patientName: data.patientName,
+        patientEmail: data.patientEmail ?? null,
+        patientPhone: data.patientPhone,
+      },
+    });
   }
 
   async getStats() {

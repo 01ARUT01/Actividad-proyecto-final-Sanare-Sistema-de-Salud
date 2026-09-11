@@ -3,8 +3,14 @@ import { doctorService } from '../services/doctorService';
 import { Doctor, CreateDoctorData, Specialty } from '../types/doctor';
 import { Plus, Edit, Trash2, X, UserPlus, Mail, Phone, Building, Stethoscope } from 'lucide-react';
 import DoctorDetailModal from './DoctorDetailModal';
+import { useI18n } from '../context/I18nContext';
+import Button from './ui/Button';
+import Field from './ui/Field';
+import Banner from './ui/Banner';
+import Spinner from './ui/Spinner';
 
 export default function DoctorManagement() {
+  const { t } = useI18n();
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +29,7 @@ export default function DoctorManagement() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
@@ -35,7 +42,7 @@ export default function DoctorManagement() {
       setDoctors(doctorsData);
       setSpecialties(specialtiesData);
     } catch (err) {
-      setError('Error al cargar datos');
+      setError(t('doctors.errorLoad'));
       console.error(err);
     } finally {
       setLoading(false);
@@ -56,18 +63,18 @@ export default function DoctorManagement() {
       await loadData();
       closeModal();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al guardar');
+      setError(err instanceof Error ? err.message : t('doctors.errorSave'));
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este doctor?')) return;
+    if (!window.confirm(t('doctors.confirmDelete'))) return;
 
     try {
       await doctorService.delete(id);
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al eliminar');
+      setError(err instanceof Error ? err.message : t('doctors.errorDelete'));
     }
   };
 
@@ -83,13 +90,7 @@ export default function DoctorManagement() {
       });
     } else {
       setEditingDoctor(null);
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        hospital: '',
-        specialtyId: '',
-      });
+      setFormData({ name: '', email: '', phone: '', hospital: '', specialtyId: '' });
     }
     setShowModal(true);
     setError('');
@@ -102,36 +103,30 @@ export default function DoctorManagement() {
   };
 
   if (loading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
+    return <Spinner className="py-12" />;
   }
+
+  const inputBase =
+    'w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg transition-all focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none';
+  const selectBase =
+    'w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg transition-all focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none appearance-none';
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Gestión de Doctores</h2>
-          <p className="text-gray-600 mt-1">Administrar doctores del sistema</p>
+          <h2 className="text-2xl font-bold text-gray-900">{t('doctors.title')}</h2>
+          <p className="text-gray-600 mt-1">{t('doctors.subtitle')}</p>
         </div>
-        <button
-          onClick={() => openModal()}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
+        <Button onClick={() => openModal()}>
           <Plus className="w-5 h-5" />
-          Agregar Doctor
-        </button>
+          {t('doctors.add')}
+        </Button>
       </div>
 
       {/* Error Message */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-          {error}
-        </div>
-      )}
+      {error && <Banner variant="error">{error}</Banner>}
 
       {/* Doctors List - Desktop Table */}
       <div className="hidden lg:block bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -139,22 +134,22 @@ export default function DoctorManagement() {
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Doctor
+                {t('doctors.th.doctor')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Especialidad
+                {t('doctors.th.specialty')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Hospital
+                {t('doctors.th.hospital')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Contacto
+                {t('doctors.th.contact')}
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Turnos
+                {t('doctors.th.appointments')}
               </th>
               <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Acciones
+                {t('doctors.th.actions')}
               </th>
             </tr>
           </thead>
@@ -183,21 +178,21 @@ export default function DoctorManagement() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-sm text-gray-900">
-                    {doctor._count?.appointments || 0} turnos
+                    {t('common.appointmentCount', { n: doctor._count?.appointments || 0 })}
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <button
                     onClick={() => openModal(doctor)}
-                    className="text-blue-600 hover:text-blue-900 mr-4"
-                    title="Editar doctor"
+                    className="text-blue-600 hover:text-blue-900 mr-4 transition-colors"
+                    title={t('doctors.titleEdit')}
                   >
                     <Edit className="w-5 h-5" />
                   </button>
                   <button
                     onClick={() => handleDelete(doctor.id)}
-                    className="text-red-600 hover:text-red-900"
-                    title="Eliminar doctor"
+                    className="text-red-600 hover:text-red-900 transition-colors"
+                    title={t('doctors.titleDelete')}
                   >
                     <Trash2 className="w-5 h-5" />
                   </button>
@@ -210,8 +205,8 @@ export default function DoctorManagement() {
         {doctors.length === 0 && (
           <div className="text-center py-12">
             <UserPlus className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No hay doctores</h3>
-            <p className="mt-1 text-sm text-gray-500">Comienza agregando un nuevo doctor.</p>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">{t('doctors.empty')}</h3>
+            <p className="mt-1 text-sm text-gray-500">{t('doctors.emptyText')}</p>
           </div>
         )}
       </div>
@@ -221,14 +216,14 @@ export default function DoctorManagement() {
         {doctors.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
             <UserPlus className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No hay doctores</h3>
-            <p className="mt-1 text-sm text-gray-500">Comienza agregando un nuevo doctor.</p>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">{t('doctors.empty')}</h3>
+            <p className="mt-1 text-sm text-gray-500">{t('doctors.emptyText')}</p>
           </div>
         ) : (
           doctors.map((doctor) => (
-            <div
+            <article
               key={doctor.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-4"
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 transition-all duration-200 hover:shadow-md"
             >
               <div className="flex justify-between items-start mb-3">
                 <button
@@ -257,27 +252,31 @@ export default function DoctorManagement() {
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Stethoscope className="w-4 h-4 text-gray-400" />
-                  <span>{doctor._count?.appointments || 0} turnos</span>
+                  <span>{t('common.appointmentCount', { n: doctor._count?.appointments || 0 })}</span>
                 </div>
               </div>
 
               <div className="flex gap-2 pt-3 border-t border-gray-100">
-                <button
+                <Button
+                  variant="secondary"
+                  full
+                  size="sm"
                   onClick={() => openModal(doctor)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
                 >
                   <Edit className="w-4 h-4" />
-                  <span className="font-medium">Editar</span>
-                </button>
-                <button
+                  {t('doctors.saveBtn')}
+                </Button>
+                <Button
+                  variant="danger"
+                  full
+                  size="sm"
                   onClick={() => handleDelete(doctor.id)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
-                  <span className="font-medium">Eliminar</span>
-                </button>
+                  {t('doctors.deleteBtn')}
+                </Button>
               </div>
-            </div>
+            </article>
           ))
         )}
       </div>
@@ -285,134 +284,95 @@ export default function DoctorManagement() {
       {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-fade-up">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
               <h3 className="text-xl font-bold text-gray-900">
-                {editingDoctor ? 'Editar Doctor' : 'Agregar Nuevo Doctor'}
+                {editingDoctor ? t('doctors.editTitle') : t('doctors.addTitle')}
               </h3>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
+              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 transition-colors">
                 <X className="w-6 h-6" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                  {error}
-                </div>
-              )}
+              {error && <Banner variant="error">{error}</Banner>}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Nombre */}
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Nombre Completo *
-                  </label>
-                  <div className="relative">
-                    <UserPlus className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Field id="doctorName" label={t('doctors.fullName')} icon={<UserPlus className="w-5 h-5" />} required>
                     <input
+                      id="doctorName"
                       type="text"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       required
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Dr. Juan Pérez"
+                      className={inputBase}
+                      placeholder={t('doctors.ph.name')}
                     />
-                  </div>
+                  </Field>
                 </div>
 
-                {/* Email */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email *
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      required
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="doctor@hospital.com"
-                    />
-                  </div>
-                </div>
+                <Field id="doctorEmail" label={t('common.email')} icon={<Mail className="w-5 h-5" />} required>
+                  <input
+                    id="doctorEmail"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    required
+                    className={inputBase}
+                    placeholder={t('doctors.ph.email')}
+                  />
+                </Field>
 
-                {/* Teléfono */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Teléfono *
-                  </label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type="tel"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      required
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="+54 11 1234-5678"
-                    />
-                  </div>
-                </div>
+                <Field id="doctorPhone" label={t('common.phone')} icon={<Phone className="w-5 h-5" />} required>
+                  <input
+                    id="doctorPhone"
+                    type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    required
+                    className={inputBase}
+                    placeholder={t('ph.phone')}
+                  />
+                </Field>
 
-                {/* Hospital */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Hospital *
-                  </label>
-                  <div className="relative">
-                    <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type="text"
-                      value={formData.hospital}
-                      onChange={(e) => setFormData({ ...formData, hospital: e.target.value })}
-                      required
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Hospital Central"
-                    />
-                  </div>
-                </div>
+                <Field id="doctorHospital" label={t('common.hospital')} icon={<Building className="w-5 h-5" />} required>
+                  <input
+                    id="doctorHospital"
+                    type="text"
+                    value={formData.hospital}
+                    onChange={(e) => setFormData({ ...formData, hospital: e.target.value })}
+                    required
+                    className={inputBase}
+                    placeholder={t('doctors.ph.hospital')}
+                  />
+                </Field>
 
-                {/* Especialidad */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Especialidad *
-                  </label>
-                  <div className="relative">
-                    <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <select
-                      value={formData.specialtyId}
-                      onChange={(e) => setFormData({ ...formData, specialtyId: e.target.value })}
-                      required
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
-                    >
-                      <option value="">Seleccionar especialidad</option>
-                      {specialties.map((specialty) => (
-                        <option key={specialty.id} value={specialty.id}>
-                          {specialty.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+                <Field id="doctorSpecialty" label={t('common.specialty')} icon={<Stethoscope className="w-5 h-5" />} required>
+                  <select
+                    id="doctorSpecialty"
+                    value={formData.specialtyId}
+                    onChange={(e) => setFormData({ ...formData, specialtyId: e.target.value })}
+                    required
+                    className={selectBase}
+                  >
+                    <option value="">{t('doctors.specialtyPlaceholder')}</option>
+                    {specialties.map((specialty) => (
+                      <option key={specialty.id} value={specialty.id}>
+                        {specialty.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  {editingDoctor ? 'Actualizar' : 'Crear'} Doctor
-                </button>
+                <Button variant="ghost" type="button" onClick={closeModal}>
+                  {t('common.cancel')}
+                </Button>
+                <Button type="submit">
+                  {editingDoctor ? t('doctors.submitUpdate') : t('doctors.submitCreate')}
+                </Button>
               </div>
             </form>
           </div>
@@ -421,10 +381,7 @@ export default function DoctorManagement() {
 
       {/* Doctor Detail Modal */}
       {viewingDoctor && (
-        <DoctorDetailModal
-          doctor={viewingDoctor}
-          onClose={() => setViewingDoctor(null)}
-        />
+        <DoctorDetailModal doctor={viewingDoctor} onClose={() => setViewingDoctor(null)} />
       )}
     </div>
   );
