@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Send, AlertCircle, CheckCircle, Loader, Stethoscope } from 'lucide-react';
 import { analyzeSymptoms } from '../services/geminiService';
 import { useI18n } from '../context/I18nContext';
+import { useAuth } from '../context/AuthContext';
+import { appointmentService } from '../services/appointmentService';
+import { UserRole } from '../types/auth';
+import { AppointmentWithDetails } from '../types/doctor';
 import { TriageResult } from '../types';
 import Button from './ui/Button';
 import Banner from './ui/Banner';
@@ -11,7 +15,57 @@ const TriageChat: React.FC = () => {
   const [result, setResult] = useState<TriageResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [todayAppointments, setTodayAppointments] = useState<AppointmentWithDetails[]>([]);
+  const [loadingAppointments, setLoadingAppointments] = useState(false);
   const { t } = useI18n();
+  const { user } = useAuth();
+  const isDoctor = user?.role === UserRole.DOCTOR;
+
+  useEffect(() => {
+    if (!isDoctor) {
+      setTodayAppointments([]);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadTodayAppointments = async () => {
+      try {
+        setLoadingAppointments(true);
+        const appointments = await appointmentService.getAll();
+
+        if (!isMounted) {
+          return;
+        }
+
+        const today = new Date();
+        const startOfDay = new Date(today);
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const endOfDay = new Date(today);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const filtered = appointments.filter((appointment) => {
+          const appointmentDate = new Date(appointment.date);
+          return appointmentDate >= startOfDay && appointmentDate <= endOfDay;
+        });
+
+        setTodayAppointments(filtered);
+      } catch (err) {
+        console.error('Error loading today appointments:', err);
+      } finally {
+        if (isMounted) {
+          setLoadingAppointments(false);
+        }
+      }
+    };
+
+    void loadTodayAppointments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isDoctor]);
 
   const handleAnalyze = async () => {
     if (!symptoms.trim()) {
@@ -56,6 +110,50 @@ const TriageChat: React.FC = () => {
         </div>
 
         <p className="text-gray-600 mb-6">{t('triage.subtitle')}</p>
+
+        {isDoctor && (
+          <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-lg font-bold text-gray-800">Turnos de hoy</h3>
+              <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">
+                {loadingAppointments ? 'Cargando...' : `${todayAppointments.length} turnos`}
+              </span>
+            </div>
+
+            {loadingAppointments ? (
+              <div className="mt-3 flex items-center gap-2 text-sm text-gray-600">
+                <Loader className="w-4 h-4 animate-spin" />
+                Revisando tu agenda...
+              </div>
+            ) : todayAppointments.length === 0 ? (
+              <p className="mt-3 text-sm text-gray-600">
+                Hoy no tenés turnos programados.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {todayAppointments.map((appointment) => (
+                  <li
+                    key={appointment.id}
+                    className="rounded-lg border border-blue-100 bg-white px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold text-gray-800">{appointment.patientName}</p>
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
+                        {appointment.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600">
+                      {new Date(appointment.date).toLocaleTimeString('es-AR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         <div className="space-y-4">
           <div>

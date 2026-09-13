@@ -100,10 +100,12 @@ export class AuthService {
 
   async login(loginDto: LoginDto): Promise<AuthResponse> {
     const { email, password } = loginDto;
+    const normalizedEmail = email.trim().toLowerCase();
 
-    // Buscar usuario
-    const user = await this.prisma.user.findUnique({
-      where: { email },
+    // Buscar usuario (búsqueda insensible a mayúsculas como defensa ante
+    // emails almacenados con mayúsculas o espacios)
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
     });
 
     if (!user) {

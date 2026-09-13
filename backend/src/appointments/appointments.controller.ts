@@ -37,12 +37,10 @@ export class AppointmentsController {
     @Query('status') status?: AppointmentStatus,
     @GetUser() user?: UserEntity,
   ) {
-    if (user.role === UserRole.ADMIN) {
+    if (user.role === UserRole.ADMIN || user.role === UserRole.DOCTOR) {
       return this.appointmentsService.findAll(status);
     }
-    if (user.role === UserRole.DOCTOR) {
-      throw new ForbiddenException('El rol DOCTOR no puede listar turnos');
-    }
+
     return this.appointmentsService.findAll(status, user.id);
   }
 
